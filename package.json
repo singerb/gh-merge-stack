@@ -1,0 +1,22 @@
+{
+	"name": "gh-merge-stack",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "gms - manage stacks of branches that update by merging, never rebasing",
+	"bin": {
+		"gms": "./bin/gms"
+	},
+	"scripts": {
+		"test": "node --test \"test/**/*.test.ts\"",
+		"test:integration": "bash test/integration.sh",
+		"typecheck": "tsc --noEmit",
+		"check": "biome check .",
+		"fix": "biome check --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.9",
+		"@types/node": "^26.2.0",
+		"typescript": "^5.9.3"
+	}
+}

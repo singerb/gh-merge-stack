@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve through symlinks: this is normally invoked via a link in ~/.local/bin,
+# and the repo it points at is where src/ actually lives.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+	LINK_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+	SOURCE="$(readlink "$SOURCE")"
+	[[ "$SOURCE" != /* ]] && SOURCE="$LINK_DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+
+# gms is TypeScript executed directly by node's type stripping (node >= 22.18).
+# An older node dies with an opaque SyntaxError at parse time, before any in-JS
+# version check could run, so the guard has to live out here.
+MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+MINOR="$(node -p 'process.versions.node.split(".")[1]' 2>/dev/null || echo 0)"
+if [[ "$MAJOR" -lt 22 ]] || { [[ "$MAJOR" -eq 22 ]] && [[ "$MINOR" -lt 18 ]]; }; then
+	echo "error: gms needs node >= 22.18 (type stripping); found $(node -v 2>/dev/null || echo none)" >&2
+	exit 1
+fi
+
+exec node "$DIR/src/cli.ts" "$@"
