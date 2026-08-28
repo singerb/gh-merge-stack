@@ -4,8 +4,10 @@ import { init } from "./commands/init.ts";
 import { ls } from "./commands/ls.ts";
 import { merge } from "./commands/merge.ts";
 import { checkout, nav } from "./commands/nav.ts";
+import { push } from "./commands/push.ts";
 import { sync } from "./commands/sync.ts";
 import { removeStack, stacks, track, untrack } from "./commands/track.ts";
+import { trunk } from "./commands/trunk.ts";
 import { GmsError } from "./errors.ts";
 import { style } from "./render.ts";
 
@@ -14,16 +16,22 @@ const USAGE = `gms — stacks of branches that update by merging, never rebasing
 usage: gms <command> [options]
 
   ls [--stack <n>] [--urls] [--json]   show the stack (default command)
+     [--markdown]                      markdown for a pr description
+     [--for <b> | --for-current]       mark one entry as "this PR"
   stacks                               list every tracked stack in this repo
   init [name] [--trunk <b>]            start a stack, seeded with the current branch
   add <branch>                         create <branch> on the stack tip and check it out
   track [branch] [--after <b>]         adopt an existing branch into a stack
   untrack [branch]                     stop tracking a branch (never deletes it)
   rm <stack>                           drop a whole stack's tracking
+  trunk [<branch>]                     show the trunk, or move every stack onto <branch>
 
   merge [--from <b>] [--to <b>]        merge up the stack, one branch at a time
         [-n] [--no-push]               defaults: --from trunk, --to the current branch
-        [--continue] [--abort]
+        [--continue] [--abort]         only pushes branches already on the remote
+
+  push [--to <b>] [--all] [-n]         publish the stack; creates remote branches
+                                       default: bottom -> the current branch
 
   sync [--prune] [-n]                  reconcile with the remote after PRs land
   up | down | top | bottom             move along the stack
@@ -37,9 +45,13 @@ const OPTIONS = {
 	from: { type: "string" },
 	to: { type: "string" },
 	after: { type: "string" },
+	for: { type: "string" },
+	"for-current": { type: "boolean" },
+	all: { type: "boolean" },
 	"dry-run": { type: "boolean" },
 	n: { type: "boolean" },
 	"no-push": { type: "boolean" },
+	markdown: { type: "boolean" },
 	continue: { type: "boolean" },
 	abort: { type: "boolean" },
 	prune: { type: "boolean" },
@@ -73,7 +85,14 @@ function main(argv: string[]): void {
 	switch (command) {
 		case "ls":
 		case "status":
-			ls({ stack: values.stack, json: values.json, urls: values.urls });
+			ls({
+				stack: values.stack,
+				json: values.json,
+				urls: values.urls,
+				markdown: values.markdown,
+				forBranch: values.for,
+				forCurrent: values["for-current"],
+			});
 			return;
 		case "stacks":
 			stacks();
@@ -93,6 +112,9 @@ function main(argv: string[]): void {
 		case "rm":
 			removeStack({ name: require1("stack name") });
 			return;
+		case "trunk":
+			trunk({ branch: arg(1) });
+			return;
 		case "merge":
 			merge({
 				from: values.from,
@@ -103,6 +125,9 @@ function main(argv: string[]): void {
 				continue: values.continue,
 				abort: values.abort,
 			});
+			return;
+		case "push":
+			push({ stack: values.stack, to: values.to, all: values.all, dryRun });
 			return;
 		case "sync":
 		case "resync":

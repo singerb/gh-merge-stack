@@ -15,6 +15,7 @@ export type TrackedBranch = {
 	prState?: PrState;
 	prBase?: string;
 	prUrl?: string;
+	prTitle?: string;
 };
 
 export type Stack = {
@@ -115,6 +116,34 @@ function migrate(raw: RepoState, file: string): RepoState {
 	return raw;
 }
 
+/**
+ * Hand-editing the state file is supported, and `gms trunk` can only repair a broken trunk
+ * if it still runs — so these warn on stderr and never fail. stderr keeps `ls --json` clean.
+ */
+export function validate(state: RepoState): string[] {
+	const warnings: string[] = [];
+	const seen = new Map<string, string>();
+
+	for (const stack of state.stacks) {
+		for (const branch of stack.branches) {
+			if (branch.name === state.trunk) {
+				warnings.push(`'${branch.name}' is both the trunk and a member of stack '${stack.name}'`);
+			}
+			const prior = seen.get(branch.name);
+			if (prior !== undefined) {
+				warnings.push(
+					prior === stack.name
+						? `'${branch.name}' appears twice in stack '${stack.name}'`
+						: `'${branch.name}' is tracked in both '${prior}' and '${stack.name}'`,
+				);
+			} else {
+				seen.set(branch.name, stack.name);
+			}
+		}
+	}
+	return warnings;
+}
+
 export function emptyState(slug: string, trunk: string): RepoState {
 	return { version: STATE_VERSION, repo: slug, trunk, stacks: [], pending: null };
 }
@@ -128,7 +157,11 @@ export function loadState(slug: string, trunk: string): RepoState {
 	} catch (err) {
 		fail(`could not parse ${file}`, String(err), "fix it by hand or move it aside");
 	}
-	return migrate(raw, file);
+	const state = migrate(raw, file);
+	for (const warning of validate(state)) {
+		console.error(`warning: ${warning}`);
+	}
+	return state;
 }
 
 /** Atomic: write a sibling temp file, then rename over the target. */

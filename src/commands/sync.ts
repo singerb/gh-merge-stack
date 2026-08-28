@@ -156,12 +156,14 @@ function cachePr(branch: TrackedBranch, pr: PrInfo | undefined): void {
 		branch.prState = undefined;
 		branch.prBase = undefined;
 		branch.prUrl = undefined;
+		branch.prTitle = undefined;
 		return;
 	}
 	branch.pr = pr.number;
 	branch.prState = pr.state;
 	branch.prBase = pr.baseRefName;
 	branch.prUrl = pr.url;
+	branch.prTitle = pr.title;
 }
 
 /** Safe delete only. `-D` is deliberately not reachable from anywhere in gms. */

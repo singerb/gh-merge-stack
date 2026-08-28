@@ -33,12 +33,30 @@ The `node_modules` here is dev-only: TypeScript for typechecking and Biome for l
 gms init auth-refactor      # start a stack on the current trunk
 gms add auth-models         # branch off the tip and check it out
 git commit ...              # ordinary git from here on
-git push -u origin HEAD     # ordinary push; open the PR however you like
-gms add auth-api            # next layer
+gms add auth-api            # next layer, still entirely local
+gms push                    # publish the stack; open the PRs however you like
 ```
+
+Nothing reaches the remote until you say `gms push`, so you can build the whole stack — and merge
+trunk up through it — before anyone sees it.
 
 Set each PR's base to the branch below it so reviewers see only that layer's diff. `gms` never
 creates or edits PRs — it reads them, and prints the command when something needs fixing.
+
+### The trunk is repo-wide
+
+Every stack in a repo sits on one trunk — there is no per-stack base, so a stack cannot be
+based on another stack's branch. `gms init --trunk <b>` therefore only sets the trunk while
+the repo has no stacks yet; after that it refuses, because moving the trunk moves *every*
+stack at once. When you really do mean that (a repo renaming `master` to `main`, say):
+
+```sh
+gms trunk                   # what the trunk is, and how many stacks sit on it
+gms trunk main              # move every stack, naming each one as it goes
+```
+
+A branch that is tracked in a stack can never be the trunk. If state ever ends up violating
+that — a hand-edit, or an older gms — every command warns on stderr until `gms trunk` fixes it.
 
 ### Bringing changes up the stack
 
@@ -52,7 +70,9 @@ gms merge -n                       # print the plan, change nothing
 The walk fetches `origin/<trunk>` itself, so you never need a local `git pull` first. It
 preflights everything (clean tree, no merge in progress, every branch present, nothing checked
 out in another worktree) before touching anything, then merges pair by pair and finishes with a
-single `git push --atomic` covering exactly the branches whose SHA changed.
+single `git push --atomic` covering exactly the branches whose SHA changed **and that already
+exist on the remote**. A branch you have never pushed stays local, and one whose remote branch was
+deleted is never resurrected; both are named at the end so you can `gms push` when you mean to.
 
 On a conflict it stops, records where it was, and leaves you on the conflicted branch with
 nothing pushed:
@@ -62,6 +82,19 @@ nothing pushed:
 git add . && git commit
 gms merge --continue     # or: gms merge --abort
 ```
+
+### Publishing
+
+```sh
+gms push            # bottom of the stack -> the branch you are on
+gms push --all      # the whole stack
+gms push -n         # preview
+```
+
+One `git push --atomic --set-upstream`, creating remote branches that do not exist yet. Branches
+already up to date are skipped, and a branch that has diverged from its remote refuses the whole
+command rather than forcing anything. For freshly published branches with no PR yet it prints the
+`gh pr create --base <the branch below>` line — gms never runs it for you.
 
 ### After PRs land
 
@@ -94,12 +127,31 @@ could exist nowhere else, so they are always left alone.
 gms ls              # the stack, with PR numbers as clickable links
 gms ls --urls       # print the PR urls in full
 gms ls --json       # for scripting; includes any interrupted merge walk
+gms ls --markdown   # a stack list to paste into a PR description
 gms up / down / top / bottom
 gms co auth-api     # or: gms co '#124'
 ```
 
 PR numbers in `gms ls` are OSC 8 hyperlinks, so ⌘-click opens them. Piped output stays plain;
 `GMS_NO_HYPERLINKS=1` disables them.
+
+`--markdown` renders one stack as a numbered list, bottom to top, using the PR titles and urls
+`gms sync` cached:
+
+```markdown
+**Stack** (bottom → top, base `main`):
+
+1. [#123 Extract auth models](https://github.com/o/r/pull/123)
+2. [#124 Auth API endpoints](https://github.com/o/r/pull/124)
+3. *(next layer — no PR yet)*
+```
+
+Nothing is marked by default, so the same block pastes into every PR in the stack. Add
+`--for-current` to point at the branch you are on, or `--for <branch>` to point at another.
+
+Branch names never appear: issue trackers that scan PR bodies for them (Shortcut, Jira) would
+otherwise link every story in the stack to every PR. A PR whose title is not cached yet renders as
+a bare `#123` — run `gms sync` to fill the titles in.
 
 ## State
 

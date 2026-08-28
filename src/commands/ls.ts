@@ -1,7 +1,8 @@
 import { openRepo } from "../context.ts";
+import { fail } from "../errors.ts";
 import { chainOf } from "../plan.ts";
-import { type Cell, cell, pad, prCell, stateCell, style, widestOf } from "../render.ts";
-import type { Stack } from "../state.ts";
+import { type Cell, cell, pad, prCell, renderStackMarkdown, stateCell, style, widestOf } from "../render.ts";
+import { type RepoState, resolveStack, type Stack } from "../state.ts";
 
 type Row = {
 	current: boolean;
@@ -13,10 +14,28 @@ type Row = {
 	url?: string;
 };
 
+export type LsArgs = {
+	stack?: string;
+	json?: boolean;
+	urls?: boolean;
+	markdown?: boolean;
+	forBranch?: string;
+	forCurrent?: boolean;
+};
+
 /** Local-only: reads git refs and the state file, never the network, so it stays instant. */
-export function ls(args: { stack?: string; json?: boolean; urls?: boolean }): void {
+export function ls(args: LsArgs): void {
 	const { git, state } = openRepo();
 	const current = git.currentBranch();
+
+	if (args.markdown) {
+		printMarkdown(state, current, args);
+		return;
+	}
+	if (args.forBranch !== undefined || args.forCurrent) {
+		fail("--for and --for-current only mean anything with --markdown", "gms ls --markdown --for-current");
+	}
+
 	const wanted = args.stack ? state.stacks.filter((s) => s.name === args.stack) : state.stacks;
 
 	if (args.json) {
@@ -47,6 +66,36 @@ export function ls(args: { stack?: string; json?: boolean; urls?: boolean }): vo
 		if (i > 0) console.log("");
 		printStack(stack, state.trunk, current, git, args.urls === true);
 	}
+}
+
+/**
+ * Markdown targets one PR body, so it resolves a single stack rather than printing them all, and
+ * emits nothing but the block itself — no pending-walk banner, no advice.
+ */
+function printMarkdown(state: RepoState, current: string, args: LsArgs): void {
+	if (args.json) fail("--json and --markdown are different formats", "pick one");
+	if (args.forBranch !== undefined && args.forCurrent) {
+		fail("--for and --for-current cannot both be given");
+	}
+
+	const stack = resolveStack(state, args.stack, current);
+	const inStack = (name: string) => stack.branches.some((b) => b.name === name);
+	let highlight: string | undefined;
+
+	if (args.forCurrent) {
+		if (!inStack(current)) {
+			fail(
+				`'${current}' is not in stack '${stack.name}'`,
+				"gms ls --markdown --for <branch> — mark a specific one instead",
+			);
+		}
+		highlight = current;
+	} else if (args.forBranch !== undefined) {
+		if (!inStack(args.forBranch)) fail(`'${args.forBranch}' is not in stack '${stack.name}'`);
+		highlight = args.forBranch;
+	}
+
+	console.log(renderStackMarkdown({ branches: stack.branches, trunk: state.trunk, highlight }));
 }
 
 function printStack(

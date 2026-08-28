@@ -12,6 +12,18 @@ export function init(args: { name?: string; trunk?: string }): void {
 		if (!git.branchExists(args.trunk) && !git.remoteRefExists(args.trunk)) {
 			fail(`no branch or origin ref named '${args.trunk}'`);
 		}
+		const owner = stackForBranch(state, args.trunk);
+		if (owner) {
+			fail(`'${args.trunk}' is tracked in stack '${owner.name}'`, "the trunk is never a stack member");
+		}
+		// The trunk is repo-wide, so moving it here would silently re-base every other stack.
+		if (args.trunk !== state.trunk && state.stacks.length > 0) {
+			fail(
+				`--trunk would move the trunk from '${state.trunk}' to '${args.trunk}'`,
+				`the trunk is repo-wide, so this re-bases all ${state.stacks.length} stacks, not just this one`,
+				`gms trunk ${args.trunk} — if you really do mean to move every stack`,
+			);
+		}
 		state.trunk = args.trunk;
 	} else if (state.stacks.length === 0) {
 		state.trunk = detectTrunk(git, ctx.config);

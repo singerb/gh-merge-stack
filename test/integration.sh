@@ -87,7 +87,7 @@ grepq "$out" "3. merge b into c"    "plan step 3"
 check "dry run changed nothing" "$(g rev-parse a)" "$before_a"
 
 # --- 3. the walk ------------------------------------------------------------
-banner "3. merge"
+banner "3. merge (branches not yet on the remote stay local)"
 out=$(gms merge 2>&1)
 grepq "$out" "merged origin/main into a" "step 1 used the REMOTE trunk"
 for br in a b c; do
@@ -96,10 +96,33 @@ done
 if g merge-base --is-ancestor a c; then ok "c contains a (merged transitively)"; else bad "c missing a"; fi
 check "3 merge commits" "$(g rev-list --merges --count origin/main..c)" "3"
 check "returned to the starting branch" "$(g rev-parse --abbrev-ref HEAD)" "c"
+grepq "$out" "no remote branch yet: a, b, c" "unpushed branches are named, not pushed"
+nogrep "$out" "^pushing" "nothing was pushed"
+for br in a b c; do
+  if g show-ref --verify -q "refs/remotes/origin/$br"; then bad "merge published $br"; else ok "$br stayed local"; fi
+done
+check "no pending state left" "$(pending_set)" "False"
+
+banner "3b. push publishes the stack"
+out=$(gms push -n 2>&1)
+grepq "$out" "would push 3 branch(es)" "dry run counts the branches"
+if g show-ref --verify -q refs/remotes/origin/a; then bad "dry run pushed"; else ok "dry run pushed nothing"; fi
+
+out=$(gms push 2>&1)
 for br in a b c; do
   check "$br was pushed" "$(g rev-parse "$br")" "$(g rev-parse "origin/$br")"
 done
-check "no pending state left" "$(pending_set)" "False"
+grepq "$out" "gh pr create --repo .* --base main --head a" "suggests a pr against the branch below"
+grepq "$out" "gh pr create --repo .* --base a --head b" "suggests b's pr against a"
+out=$(gms push 2>&1); grepq "$out" "nothing to push" "a published stack has nothing to push"
+
+banner "3c. merge pushes what is already published"
+g switch -q main; commit t2.txt "trunk2" "trunk moves again"; g push -q origin main; g switch -q c
+out=$(gms merge 2>&1)
+grepq "$out" "pushing a, b, c" "published branches are pushed by merge"
+for br in a b c; do
+  check "$br is up to date on origin" "$(g rev-parse "$br")" "$(g rev-parse "origin/$br")"
+done
 
 # --- 4. idempotence ---------------------------------------------------------
 banner "4. merge again"
@@ -218,6 +241,75 @@ if g show-ref --verify -q refs/heads/x; then ok "prune left abandoned x alone"; 
 if g show-ref --verify -q refs/heads/z; then ok "prune left never-pushed z alone"; else bad "prune deleted z"; fi
 grepq "$out" "re-link z: parent y -> x" "z re-links over the pruned branch"
 
+# --- 7b. push: scope, skips, and divergence ---------------------------------
+banner "7b. push scope"
+echo '[]' > "$GMS_FAKE_PRS"
+g switch -q main
+gms init pushy >/dev/null
+gms add p1 >/dev/null; commit p1.txt p1 p1
+gms add p2 >/dev/null; commit p2.txt p2 p2
+gms add p3 >/dev/null; commit p3.txt p3 p3
+g switch -q p2
+
+out=$(gms push 2>&1)
+grepq "$out" "pushing 2 branch(es)" "default stops at the current branch"
+check "p1 published" "$(g rev-parse p1)" "$(g rev-parse origin/p1)"
+check "p2 published" "$(g rev-parse p2)" "$(g rev-parse origin/p2)"
+if g show-ref --verify -q refs/remotes/origin/p3; then bad "pushed above the current branch"; else ok "p3 above HEAD untouched"; fi
+
+out=$(gms push --all 2>&1)
+grepq "$out" "up to date" "already-published branches are skipped"
+check "p3 published under --all" "$(g rev-parse p3)" "$(g rev-parse origin/p3)"
+
+commit p2.txt p2more "p2 again"                    # a new commit on a published branch
+out=$(gms push -n 2>&1)
+grepq "$out" "↑1" "an unpushed commit shows as ahead"
+grepq "$out" "dry run: nothing was pushed" "dry run says so"
+if g merge-base --is-ancestor p2 origin/p2; then bad "dry run pushed"; else ok "dry run pushed nothing"; fi
+
+banner "7c. push refuses to force"
+g switch -q -c divergent p2~1
+commit d.txt d "divergent"
+g push -q -f origin divergent:p2                   # someone else rewrote origin/p2
+g fetch -q origin
+g switch -q p2
+out=$(gms push 2>&1); rc=$?
+check "diverged push exits nonzero" "$rc" "1"
+grepq "$out" "diverged from origin" "divergence is named"
+grepq "$out" "never force-pushes" "and the refusal is explained"
+nogrep "$out" "pushing" "nothing was attempted"
+
+g push -q -f origin p2                             # put origin/p2 back under the local branch
+g fetch -q origin
+
+# --- 7d. markdown for pr descriptions ---------------------------------------
+banner "7d. ls --markdown"
+cat > "$GMS_FAKE_PRS" <<JSON
+[{"number":11,"state":"OPEN","headRefName":"p1","baseRefName":"main","url":"https://github.test/test/repo/pull/11","title":"first layer"},
+ {"number":12,"state":"OPEN","headRefName":"p2","baseRefName":"p1","url":"https://github.test/test/repo/pull/12","title":"second layer"}]
+JSON
+gms sync --stack pushy >/dev/null 2>&1
+g switch -q p2
+
+out=$(gms ls --stack pushy --markdown 2>&1)
+grepq "$out" "bottom → top, base" "header names the base"
+grepq "$out" "#11 first layer](https://github.test/test/repo/pull/11)" "entries carry the pr title"
+grepq "$out" "3. .(next layer — no PR yet)" "a branch without a pr is a placeholder"
+nogrep "$out" "p1" "no branch name reaches the markdown"
+nogrep "$out" "p3" "not even for the branch with no pr"
+nogrep "$out" "this PR" "nothing is marked by default"
+
+out=$(gms ls --stack pushy --markdown --for-current 2>&1)
+grepq "$out" "#12 second layer](https://github.test/test/repo/pull/12) 👈" "--for-current marks the checked-out branch"
+out=$(gms ls --stack pushy --markdown --for p1 2>&1)
+grepq "$out" "#11 first layer](https://github.test/test/repo/pull/11) 👈" "--for moves the marker"
+out=$(gms ls --stack pushy --markdown --for nope 2>&1)
+grepq "$out" "not in stack" "--for outside the stack is refused"
+out=$(gms ls --stack pushy --markdown --json 2>&1)
+grepq "$out" "different formats" "--json with --markdown is refused"
+out=$(gms ls --stack pushy --for-current 2>&1)
+grepq "$out" "only mean anything with --markdown" "--for-current without --markdown is refused"
+
 # --- 8. misc guards ---------------------------------------------------------
 banner "8. guards"
 g switch -q z; echo dirty >> "$WORK/z.txt"
@@ -234,6 +326,51 @@ if g show-ref --verify -q refs/heads/z; then ok "untrack did not delete z"; else
 ln -sf "$GMS_REPO/bin/gms" "$RUN/fakebin/gms-linked"
 out=$("$RUN/fakebin/gms-linked" --help 2>&1)
 grepq "$out" "never rebasing" "bin/gms works when invoked through a symlink"
+
+# --- 9. the trunk is repo-wide -----------------------------------------------
+# `gms init --trunk` used to write state.trunk unconditionally, silently re-basing
+# every other stack in the repo. It must refuse, and point at `gms trunk`.
+banner "9. trunk safety"
+trunk_of() { gms ls --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["trunk"])'; }
+STATE_FILE=$(ls "$XDG_DATA_HOME"/gms/stacks/*.json | head -1)
+
+check "trunk starts as main" "$(trunk_of)" "main"
+out=$(gms trunk 2>&1); grepq "$out" "trunk: main" "gms trunk reports the current trunk"
+
+out=$(gms init newstack --trunk z 2>&1)
+grepq "$out" "would move the trunk from 'main' to 'z'" "init --trunk refused once stacks exist"
+grepq "$out" "gms trunk z" "the refusal names the command that does mean it"
+check "refused init left the trunk alone" "$(trunk_of)" "main"
+out=$(gms stacks 2>&1); nogrep "$out" "newstack" "refused init created no stack"
+
+out=$(gms init another --trunk p1 2>&1)
+grepq "$out" "tracked in stack 'pushy'" "a tracked branch cannot become the trunk"
+out=$(gms trunk p1 2>&1)
+grepq "$out" "tracked in stack 'pushy'" "gms trunk refuses a tracked branch too"
+
+out=$(gms trunk z 2>&1)
+grepq "$out" "trunk main -> z" "gms trunk moves the trunk"
+grepq "$out" "no branches were changed" "gms trunk narrates that it touched no refs"
+check "trunk moved" "$(trunk_of)" "z"
+
+# The corruption this whole section exists to prevent: trunk that is also a stack member.
+python3 -c "
+import json,sys
+f='$STATE_FILE'
+s=json.load(open(f))
+s['trunk']='p1'
+json.dump(s,open(f,'w'),indent=2)
+"
+out=$(gms ls 2>&1 >/dev/null)
+grepq "$out" "both the trunk and a member of stack 'pushy'" "bad state warns on stderr"
+if gms ls --json 2>/dev/null | python3 -c 'import json,sys;json.load(sys.stdin)' 2>/dev/null; then
+  ok "the warning does not corrupt --json stdout"
+else
+  bad "the warning does not corrupt --json stdout"
+fi
+out=$(gms trunk main 2>&1); grepq "$out" "trunk p1 -> main" "gms trunk repairs a hand-broken trunk"
+check "trunk repaired" "$(trunk_of)" "main"
+out=$(gms ls 2>&1 >/dev/null); nogrep "$out" "warning:" "repaired state warns about nothing"
 
 echo ""
 echo "================ $PASS passed, $FAIL failed"

@@ -8,10 +8,11 @@ export function chainOf(stack: Stack, trunk: string): string[] {
 	return [trunk, ...stack.branches.map((b) => b.name)];
 }
 
+/** Positional, like `chainOf` — a duplicate name in the chain must not shift the answer. */
 export function parentOf(stack: Stack, trunk: string, branch: string): string | null {
-	const chain = chainOf(stack, trunk);
-	const i = chain.indexOf(branch);
-	return i > 0 ? (chain[i - 1] ?? null) : null;
+	const i = stack.branches.findIndex((b) => b.name === branch);
+	if (i === -1) return null;
+	return i === 0 ? trunk : (stack.branches[i - 1]?.name ?? null);
 }
 
 /**
@@ -59,6 +60,62 @@ export function buildMergePlan(args: {
 		pairs.push({ parent: chain[i] as string, child: chain[i + 1] as string });
 	}
 	return pairs;
+}
+
+/** How `gms push` sees a tracked branch, from local refs alone — no fetch, no network. */
+export type PushState = "new" | "ahead" | "up-to-date" | "behind" | "diverged" | "missing";
+
+export type PushFacts = {
+	localExists: boolean;
+	remoteExists: boolean;
+	/** Ahead of / behind `origin/<branch>`; both zero when there is nothing to compare against. */
+	ahead: number;
+	behind: number;
+};
+
+export function classifyPush(f: PushFacts): PushState {
+	if (!f.localExists) return "missing";
+	if (!f.remoteExists) return "new";
+	if (f.ahead > 0 && f.behind > 0) return "diverged";
+	if (f.ahead > 0) return "ahead";
+	if (f.behind > 0) return "behind";
+	return "up-to-date";
+}
+
+/** Classifications with commits to publish. Everything else is reported and left alone. */
+export const PUSHABLE: ReadonlySet<PushState> = new Set(["new", "ahead"]);
+
+/**
+ * The slice of the stack to publish: bottom-up to `to`, which defaults to the branch you are on
+ * exactly as `gms merge` does. `all` reaches the tip instead.
+ */
+export function buildPushPlan(args: {
+	stack: Stack;
+	trunk: string;
+	to?: string;
+	all?: boolean;
+	current: string;
+}): string[] {
+	const { stack, trunk, current } = args;
+	const names = stack.branches.map((b) => b.name);
+	if (names.length === 0) {
+		throw new GmsError(`stack '${stack.name}' is empty`, "gms add <branch> — put something in it");
+	}
+	if (args.all) return names;
+
+	const to = args.to ?? current;
+	const idx = names.indexOf(to);
+	if (idx === -1) {
+		const chain = chainOf(stack, trunk);
+		const hint =
+			to === trunk
+				? `'${trunk}' is the trunk — gms only pushes branches it tracks; try --all`
+				: to === current
+					? `you are on '${current}', which is not in stack '${stack.name}' — pass --to <branch> or --all`
+					: `stack runs: ${chain.join(" -> ")}`;
+		throw new GmsError(`'${to}' is not in stack '${stack.name}'`, hint);
+	}
+	return names.slice(0, idx + 1);
 }
 
 /** How `gms sync` sees a tracked branch after fetching. */

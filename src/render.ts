@@ -1,4 +1,5 @@
 import type { Classification, MergePair, Relink } from "./plan.ts";
+import type { TrackedBranch } from "./state.ts";
 
 const isTty = () => process.stdout.isTTY === true;
 
@@ -48,6 +49,45 @@ export function stateCell(state: string | undefined): Cell {
 	if (!state) return cell("");
 	const color: Style = state === "OPEN" ? "green" : state === "MERGED" ? "blue" : "red";
 	return cell(state, style(state, color));
+}
+
+/** Brackets are the only characters that can break out of a markdown link label. */
+const escapeLabel = (text: string) => text.replace(/([[\]])/g, "\\$1");
+
+/**
+ * One entry: PR title if `gms sync` has cached one, else the number alone. Branch names are
+ * deliberately never emitted — issue trackers scrape PR bodies for branch names and cross-link
+ * every story in the stack onto every PR.
+ */
+function markdownEntry(b: TrackedBranch): string {
+	if (b.pr === undefined) return "*(next layer — no PR yet)*";
+	// A bare `#123` autolinks on github, so the url is a nicety rather than a requirement.
+	const label = b.prTitle ? `#${b.pr} ${escapeLabel(b.prTitle)}` : `#${b.pr}`;
+	return b.prUrl ? `[${label}](${b.prUrl})` : label;
+}
+
+/**
+ * The stack as Markdown for a PR description. Deliberately unstyled — no color, no OSC 8 — so the
+ * output is identical piped or not, and safe to paste. Nothing is marked unless asked for, which
+ * keeps one rendering valid in every PR of the stack.
+ */
+export function renderStackMarkdown(args: {
+	branches: TrackedBranch[];
+	trunk: string;
+	highlight?: string;
+}): string {
+	const entries = args.branches.map((b, i) => {
+		const mark = b.name === args.highlight ? " 👈 **this PR**" : "";
+		return `${i + 1}. ${markdownEntry(b)}${mark}`;
+	});
+
+	return [
+		`**Stack** (bottom → top, base \`${args.trunk}\`):`,
+		"",
+		...entries,
+		"",
+		"<sub>rendered by `gms ls --markdown`</sub>",
+	].join("\n");
 }
 
 export function renderMergePlan(pairs: MergePair[]): string {

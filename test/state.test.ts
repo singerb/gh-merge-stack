@@ -1,7 +1,37 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { indexByHead, type PrInfo } from "../src/gh.ts";
-import { parseRepoSlug, stateFileFor } from "../src/state.ts";
+import { parseRepoSlug, type RepoState, stateFileFor, validate } from "../src/state.ts";
+
+const stateOf = (trunk: string, stacks: Record<string, string[]>): RepoState => ({
+	version: 1,
+	repo: "owner/repo",
+	trunk,
+	stacks: Object.entries(stacks).map(([name, branches]) => ({
+		name,
+		createdAt: "2026-01-01T00:00:00Z",
+		branches: branches.map((b) => ({ name: b })),
+	})),
+	pending: null,
+});
+
+test("validate is quiet about state that holds together", () => {
+	assert.deepEqual(validate(stateOf("main", { one: ["a", "b"], two: ["c"] })), []);
+});
+
+test("validate catches a trunk that is also a stack member", () => {
+	const warnings = validate(stateOf("b", { one: ["a", "b"] }));
+	assert.equal(warnings.length, 1);
+	assert.match(warnings[0] as string, /both the trunk and a member of stack 'one'/);
+});
+
+test("validate catches a branch tracked twice", () => {
+	assert.match(
+		validate(stateOf("main", { one: ["a"], two: ["a"] }))[0] as string,
+		/tracked in both 'one' and 'two'/,
+	);
+	assert.match(validate(stateOf("main", { one: ["a", "a"] }))[0] as string, /appears twice in stack 'one'/);
+});
 
 test("parseRepoSlug handles the remote url forms git actually produces", () => {
 	const cases: [string, string | null][] = [

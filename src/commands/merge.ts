@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { type Ctx, openRepo } from "../context.ts";
-import { fail, GmsError } from "../errors.ts";
+import { fail } from "../errors.ts";
 import { buildMergePlan, type MergePair } from "../plan.ts";
+import { pushArgsFor, pushBranches } from "../push.ts";
 import { renderMergePlan, style } from "../render.ts";
 import { type Pending, resolveStack } from "../state.ts";
 
@@ -231,22 +231,26 @@ function finish(ctx: Ctx, pending: Pending): void {
 		return;
 	}
 
-	const pushArgs = ["push", "--atomic", "--set-upstream", "origin", ...pending.changed];
-	if (!pending.push) {
+	// Merging is local until you say otherwise: a branch with no remote ref was either never
+	// pushed or was deleted there, and neither is ours to publish. `gms push` is that decision.
+	const published: string[] = [];
+	const unpublished: string[] = [];
+	for (const b of pending.changed) (git.remoteRefExists(b) ? published : unpublished).push(b);
+
+	if (published.length > 0) {
 		console.log("");
-		console.log(`${pending.changed.length} branch(es) updated locally. push them with:`);
-		console.log(`  ${style(`git -C ${git.root} ${pushArgs.join(" ")}`, "bold")}`);
-		return;
+		if (pending.push) {
+			console.log(`pushing ${published.join(", ")}`);
+			pushBranches(git, published, "fix the cause and re-run `gms merge`");
+		} else {
+			console.log(`${published.length} branch(es) updated locally. push them with:`);
+			console.log(`  ${style(`git -C ${git.root} ${pushArgsFor(published).join(" ")}`, "bold")}`);
+		}
 	}
 
-	console.log("");
-	console.log(`pushing ${pending.changed.join(", ")}`);
-	try {
-		execFileSync("git", ["-C", git.root, ...pushArgs], { stdio: "inherit" });
-	} catch {
-		throw new GmsError(
-			"push failed",
-			"--atomic means nothing was pushed; fix the cause and re-run `gms merge`",
-		);
+	if (unpublished.length > 0) {
+		console.log("");
+		console.log(`not pushed — no remote branch yet: ${unpublished.join(", ")}`);
+		console.log(`  ${style("gms push", "bold")} — publish them when you are ready to open PRs`);
 	}
 }
