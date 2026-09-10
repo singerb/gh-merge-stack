@@ -16,6 +16,10 @@ branches are append-only, so a plain `git push` opens a plain PR, automerge work
 threads stay anchored. It is a timesaver for "take this change all the way up the stack" —
 every step it takes is one you could equally do by hand in the GitHub UI.
 
+Note: this is a personal utility, highly specific to my use case, and fully AI-authored. I'm publishing
+it partly to back it up, partly to share it, but with no expectation anyone else will find
+it useful. Use at your own risk (though it is careful, by design, to avoid destructive operations).
+
 ## Install
 
 Needs node ≥ 22.18 (for native TypeScript type stripping), `git`, and `gh`.
