@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { add } from "./commands/add.ts";
+import { changeset } from "./commands/changeset.ts";
 import { init } from "./commands/init.ts";
 import { ls } from "./commands/ls.ts";
 import { merge } from "./commands/merge.ts";
@@ -34,6 +35,7 @@ usage: gms <command> [options]
                                        default: bottom -> the current branch
 
   sync [--prune] [-n]                  reconcile with the remote after PRs land
+  changeset [-n]                       pnpm changeset, --since the branch below this one
   up | down | top | bottom             move along the stack
   co <branch|#pr>                      check out by branch name or PR number
 
@@ -125,6 +127,9 @@ function main(argv: string[]): void {
 				continue: values.continue,
 				abort: values.abort,
 			});
+			return;
+		case "changeset":
+			changeset({ stack: values.stack, dryRun });
 			return;
 		case "push":
 			push({ stack: values.stack, to: values.to, all: values.all, dryRun });

@@ -16,6 +16,23 @@ export function parentOf(stack: Stack, trunk: string, branch: string): string | 
 }
 
 /**
+ * Args for `pnpm changeset` on `branch`. A changeset should describe only the commits that
+ * belong to this branch, so everything above the bottom of the stack gets `--since <parent>`;
+ * the bottom branch already diffs against the trunk on its own.
+ */
+export function changesetArgs(args: { stack: Stack; trunk: string; branch: string }): string[] {
+	const { stack, trunk, branch } = args;
+	const parent = parentOf(stack, trunk, branch);
+	if (parent === null) {
+		throw new GmsError(
+			`'${branch}' is not in stack '${stack.name}'`,
+			`stack runs: ${chainOf(stack, trunk).join(" -> ")}`,
+		);
+	}
+	return parent === trunk ? ["changeset"] : ["changeset", "--since", parent];
+}
+
+/**
  * Ordered parent -> child pairs for the slice of the stack between `from` and `to`.
  * Defaults: `from` = trunk, `to` = the current branch.
  */

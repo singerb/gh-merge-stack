@@ -7,6 +7,7 @@ import {
 	buildMergePlan,
 	buildPushPlan,
 	chainOf,
+	changesetArgs,
 	classifyBranch,
 	classifyPush,
 	type PushFacts,
@@ -21,6 +22,18 @@ const stackOf = (...names: string[]): Stack => ({
 });
 
 const flat = (pairs: { parent: string; child: string }[]) => pairs.map((p) => `${p.parent}->${p.child}`);
+
+test("changesetArgs only passes --since above the bottom of the stack", () => {
+	const stack = stackOf("a", "b", "c");
+	assert.deepEqual(changesetArgs({ stack, trunk: "main", branch: "a" }), ["changeset"]);
+	assert.deepEqual(changesetArgs({ stack, trunk: "main", branch: "b" }), ["changeset", "--since", "a"]);
+	assert.deepEqual(changesetArgs({ stack, trunk: "main", branch: "c" }), ["changeset", "--since", "b"]);
+});
+
+test("changesetArgs rejects a branch outside the stack", () => {
+	assert.throws(() => changesetArgs({ stack: stackOf("a"), trunk: "main", branch: "main" }), GmsError);
+	assert.throws(() => changesetArgs({ stack: stackOf("a"), trunk: "main", branch: "nope" }), GmsError);
+});
 
 test("chainOf puts trunk at the bottom", () => {
 	assert.deepEqual(chainOf(stackOf("a", "b"), "main"), ["main", "a", "b"]);

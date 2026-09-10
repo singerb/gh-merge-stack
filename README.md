@@ -121,6 +121,23 @@ branches and runs `git branch -d` (safe delete only — `-D` is unreachable from
 gms) on branches that have actually landed. `abandoned` branches are the case where a commit
 could exist nowhere else, so they are always left alone.
 
+### Writing a changeset
+
+```sh
+gms changeset       # pnpm changeset, scoped to this branch's own commits
+gms changeset -n    # print the command, run nothing
+```
+
+A changeset should describe what *this* branch adds, not everything beneath it. On the bottom
+branch that is what `pnpm changeset` already does; higher up, gms supplies the branch below as
+`--since`, so you never have to look the name up:
+
+```
+auth-models   ->  pnpm changeset
+auth-api      ->  pnpm changeset --since auth-models
+auth-ui       ->  pnpm changeset --since auth-api
+```
+
 ### Looking around
 
 ```sh

@@ -310,6 +310,30 @@ grepq "$out" "different formats" "--json with --markdown is refused"
 out=$(gms ls --stack pushy --for-current 2>&1)
 grepq "$out" "only mean anything with --markdown" "--for-current without --markdown is refused"
 
+# --- 7e. changeset ----------------------------------------------------------
+# `pnpm` is stubbed the same way `gh` is, so we can read back the exact argv gms built.
+banner "7e. changeset"
+cat > "$RUN/fakebin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+echo "fake pnpm: $*"
+STUB
+chmod +x "$RUN/fakebin/pnpm"
+
+g switch -q x
+out=$(gms changeset 2>&1)
+grepq "$out" "fake pnpm: changeset$" "bottom of the stack gets no --since"
+
+g switch -q z
+out=$(gms changeset 2>&1)
+grepq "$out" "fake pnpm: changeset --since x" "higher up, --since is the branch below"
+
+out=$(gms changeset -n 2>&1)
+grepq "$out" "pnpm changeset --since x" "dry run prints the command"
+nogrep "$out" "fake pnpm" "dry run ran nothing"
+
+g switch -q main
+out=$(gms changeset --stack edge 2>&1); grepq "$out" "not in stack 'edge'" "off-stack branch refused"
+
 # --- 8. misc guards ---------------------------------------------------------
 banner "8. guards"
 g switch -q z; echo dirty >> "$WORK/z.txt"
