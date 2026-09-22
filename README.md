@@ -184,6 +184,28 @@ a bare `#123` — run `gms sync` to fill the titles in.
 clone does not orphan them. Files are written atomically and pretty-printed — editing one by
 hand is a supported way out of a mess.
 
+## Agent skill
+
+`skills/gms/SKILL.md` is a vendor-neutral skill file: the model, the command surface, the
+workflows, and the rules an agent would otherwise get wrong (left to itself it reaches for
+`git rebase` and `gh pr edit`, because every other stacking tool works that way).
+
+For an agent with a skills directory, symlink the folder — personally, or into the repo where you
+actually stack branches:
+
+```sh
+ln -s "$PWD/skills/gms" ~/.claude/skills/gms                # personal
+ln -s "$PWD/skills/gms" /path/to/repo/.claude/skills/gms    # one repo
+```
+
+Copy the folder instead if your agent does not follow symlinks.
+
+For anything else, point it at the file — a line in the repo's `AGENTS.md` is enough:
+
+```markdown
+For stacked branches, follow ~/src/gh-merge-stack/skills/gms/SKILL.md.
+```
+
 ## Design rules
 
 - **Never destroy silently.** No `push --force`, no `reset --hard`, no `git branch -D`, ever.
