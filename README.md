@@ -68,8 +68,14 @@ that — a hand-edit, or an older gms — every command warns on stderr until `g
 gms merge                          # trunk -> ... -> the branch you are on
 gms merge --to auth-ui             # trunk all the way to the top
 gms merge --from auth-models --to auth-ui   # ignore trunk, walk a slice
+gms merge --from prev              # just the branch below -> this one
 gms merge -n                       # print the plan, change nothing
 ```
+
+`--from` and `--to` also take refs relative to the branch you are on: `prev`, `next`, `-N`
+or `+N` (`-1` from the bottom branch is the trunk). A real branch with that name wins.
+`gms merge --from prev` is the review-fix loop: pull the fixes up from the layer below,
+fix this layer, `gms up`, repeat.
 
 The walk fetches `origin/<trunk>` itself, so you never need a local `git pull` first. It
 preflights everything (clean tree, no merge in progress, every branch present, nothing checked

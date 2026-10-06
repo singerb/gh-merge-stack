@@ -84,6 +84,11 @@ out=$(gms merge -n 2>&1)
 grepq "$out" "1. merge main into a" "plan step 1"
 grepq "$out" "2. merge a into b"    "plan step 2"
 grepq "$out" "3. merge b into c"    "plan step 3"
+for ref in prev -1; do
+	out=$(gms merge --from "$ref" -n 2>&1)
+	grepq "$out" "1. merge b into c" "--from $ref plans one step"
+	if grep -q "2\. merge" <<<"$out"; then bad "--from $ref planned more than one step"; else ok "--from $ref is only one step"; fi
+done
 check "dry run changed nothing" "$(g rev-parse a)" "$before_a"
 
 # --- 3. the walk ------------------------------------------------------------

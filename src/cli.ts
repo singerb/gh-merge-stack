@@ -30,6 +30,8 @@ usage: gms <command> [options]
   merge [--from <b>] [--to <b>]        merge up the stack, one branch at a time
         [-n] [--no-push]               defaults: --from trunk, --to the current branch
         [--continue] [--abort]         only pushes branches already on the remote
+                                       <b> may also be prev, next, -N or +N,
+                                       counted from the current branch
 
   push [--to <b>] [--all] [-n]         publish the stack; creates remote branches
                                        default: bottom -> the current branch
@@ -63,9 +65,25 @@ const OPTIONS = {
 	help: { type: "boolean", short: "h" },
 } as const;
 
+/** parseArgs refuses `--from -1` as ambiguous; glue relative refs on so it reads `--from=-1`. */
+function joinNegativeRefs(argv: string[]): string[] {
+	const out: string[] = [];
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i] as string;
+		const next = argv[i + 1];
+		if ((a === "--from" || a === "--to") && next !== undefined && /^-\d+$/.test(next)) {
+			out.push(`${a}=${next}`);
+			i++;
+		} else {
+			out.push(a);
+		}
+	}
+	return out;
+}
+
 function main(argv: string[]): void {
 	const { values, positionals } = parseArgs({
-		args: argv,
+		args: joinNegativeRefs(argv),
 		options: OPTIONS,
 		allowPositionals: true,
 	});

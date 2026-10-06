@@ -79,8 +79,8 @@ additionally needs `pnpm`.
 | `untrack [branch]` | — | Stop tracking a branch. Never deletes it; prints the `git branch -d` line. |
 | `rm <stack>` | — | Drop a whole stack's tracking. No branches are deleted. |
 | `trunk [<branch>]` | — | Show the trunk, or move **every** stack in the repo onto `<branch>`. |
-| `merge` | `--from <b>`, `--to <b>`, `--stack`, `-n`, `--no-push`, `--continue`, `--abort` | Merge up the stack one pair at a time. Defaults: `--from` the trunk, `--to` the current branch. |
-| `push` | `--to <b>`, `--all`, `--stack`, `-n` | Publish: one `git push --atomic --set-upstream`. Default bottom → the current branch; `--all` for the whole stack. |
+| `merge` | `--from <b>`, `--to <b>`, `--stack`, `-n`, `--no-push`, `--continue`, `--abort` | Merge up the stack one pair at a time. Defaults: `--from` the trunk, `--to` the current branch. Both also take `prev`, `next`, `-N`, `+N` relative to the current branch. |
+| `push` | `--to <b>`, `--all`, `--stack`, `-n` | Publish: one `git push --atomic --set-upstream`. `--to` takes relative refs like `merge`. Default bottom → the current branch; `--all` for the whole stack. |
 | `sync` (alias `resync`) | `--prune`, `--keep-empty`, `--stack`, `-n` | Fetch with `--prune`, read every PR in one `gh pr list`, reconcile tracking. |
 | `changeset` | `--stack`, `-n` | `pnpm changeset`, scoped to this branch's own commits. |
 | `up` / `down` / `top` / `bottom` | `--stack` | Move along the stack. |
@@ -117,6 +117,7 @@ gms track auth-ui --after auth-api # insert at a specific position
 gms merge                                    # trunk -> ... -> the branch you are on
 gms merge --to auth-ui                       # trunk all the way to the top
 gms merge --from auth-models --to auth-ui    # ignore trunk, walk a slice
+gms merge --from prev                        # one step: the branch below -> this one
 gms merge -n                                 # print the plan, change nothing
 gms merge --no-push                          # merge locally, print the push command
 ```

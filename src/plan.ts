@@ -15,6 +15,39 @@ export function parentOf(stack: Stack, trunk: string, branch: string): string | 
 	return i === 0 ? trunk : (stack.branches[i - 1]?.name ?? null);
 }
 
+const ALIASES: Record<string, string> = { prev: "-1", next: "+1" };
+
+/**
+ * Resolve `prev`, `next`, `-N` or `+N` to a chain entry, counted from `current`. A real chain
+ * name always wins over the alias, and anything unrecognised comes back as-is for the caller
+ * to reject.
+ */
+export function resolveRef(args: {
+	chain: string[];
+	ref: string;
+	current: string;
+	stackName: string;
+}): string {
+	const { chain, ref, current, stackName } = args;
+	if (chain.includes(ref)) return ref;
+
+	const offset = ALIASES[ref] ?? ref;
+	if (!/^[+-]\d+$/.test(offset)) return ref;
+
+	const here = chain.indexOf(current);
+	if (here === -1) {
+		throw new GmsError(
+			`'${ref}' is relative to the current branch, but '${current}' is not in stack '${stackName}'`,
+			"pass a branch name instead",
+		);
+	}
+	const target = chain[here + Number(offset)];
+	if (target === undefined) {
+		throw new GmsError(`'${ref}' from '${current}' runs off the stack`, `stack runs: ${chain.join(" -> ")}`);
+	}
+	return target;
+}
+
 /**
  * Args for `pnpm changeset` on `branch`. A changeset should describe only the commits that
  * belong to this branch, so everything above the bottom of the stack gets `--since <parent>`;
@@ -45,8 +78,9 @@ export function buildMergePlan(args: {
 }): MergePair[] {
 	const { stack, trunk, current } = args;
 	const chain = chainOf(stack, trunk);
-	const from = args.from ?? trunk;
-	const to = args.to ?? current;
+	const resolve = (ref: string) => resolveRef({ chain, ref, current, stackName: stack.name });
+	const from = args.from === undefined ? trunk : resolve(args.from);
+	const to = args.to === undefined ? current : resolve(args.to);
 
 	const fromIdx = chain.indexOf(from);
 	const toIdx = chain.indexOf(to);
@@ -120,7 +154,10 @@ export function buildPushPlan(args: {
 	}
 	if (args.all) return names;
 
-	const to = args.to ?? current;
+	const to =
+		args.to === undefined
+			? current
+			: resolveRef({ chain: chainOf(stack, trunk), ref: args.to, current, stackName: stack.name });
 	const idx = names.indexOf(to);
 	if (idx === -1) {
 		const chain = chainOf(stack, trunk);

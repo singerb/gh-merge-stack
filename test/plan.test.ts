@@ -92,6 +92,68 @@ test("downward ranges are rejected: gms only merges upward", () => {
 	);
 });
 
+test("--from prev is one step: the branch below into this one", () => {
+	const stack = stackOf("a", "b", "c");
+	assert.deepEqual(flat(buildMergePlan({ stack, trunk: "main", from: "prev", current: "b" })), ["a->b"]);
+	assert.deepEqual(flat(buildMergePlan({ stack, trunk: "main", from: "-1", current: "c" })), ["b->c"]);
+});
+
+test("prev from the bottom branch is the trunk", () => {
+	const pairs = buildMergePlan({ stack: stackOf("a", "b"), trunk: "main", from: "prev", current: "a" });
+	assert.deepEqual(flat(pairs), ["main->a"]);
+});
+
+test("relative refs count from the current branch on both ends", () => {
+	const stack = stackOf("a", "b", "c", "d");
+	assert.deepEqual(flat(buildMergePlan({ stack, trunk: "main", from: "-2", current: "c" })), [
+		"a->b",
+		"b->c",
+	]);
+	assert.deepEqual(flat(buildMergePlan({ stack, trunk: "main", from: "a", to: "next", current: "b" })), [
+		"a->b",
+		"b->c",
+	]);
+	assert.deepEqual(flat(buildMergePlan({ stack, trunk: "main", from: "-1", to: "+2", current: "b" })), [
+		"a->b",
+		"b->c",
+		"c->d",
+	]);
+});
+
+test("a relative ref that runs off either end is rejected", () => {
+	const stack = stackOf("a", "b");
+	assert.throws(
+		() => buildMergePlan({ stack, trunk: "main", from: "-2", current: "a" }),
+		(e: unknown) => e instanceof GmsError && /runs off the stack/.test((e as GmsError).message),
+	);
+	assert.throws(
+		() => buildMergePlan({ stack, trunk: "main", to: "next", current: "b" }),
+		(e: unknown) => e instanceof GmsError && /runs off the stack/.test((e as GmsError).message),
+	);
+});
+
+test("a real branch named like an alias wins over the alias", () => {
+	const stack = stackOf("prev", "a", "b");
+	assert.deepEqual(flat(buildMergePlan({ stack, trunk: "main", from: "prev", current: "b" })), [
+		"prev->a",
+		"a->b",
+	]);
+});
+
+test("a relative ref needs the current branch to be in the stack", () => {
+	assert.throws(
+		() => buildMergePlan({ stack: stackOf("a", "b"), trunk: "main", from: "prev", to: "b", current: "nope" }),
+		(e: unknown) => e instanceof GmsError && /relative to the current branch/.test((e as GmsError).message),
+	);
+});
+
+test("push --to takes relative refs too", () => {
+	assert.deepEqual(
+		buildPushPlan({ stack: stackOf("a", "b", "c"), trunk: "main", to: "prev", current: "c" }),
+		["a", "b"],
+	);
+});
+
 test("a branch outside the stack is rejected with the chain in the hint", () => {
 	assert.throws(
 		() => buildMergePlan({ stack: stackOf("a", "b"), trunk: "main", to: "nope", current: "nope" }),
